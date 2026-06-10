@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TG Content Bot · Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #1c2230;
+    --border:    #30363d;
+    --tg:        #229ed9;
+    --tg-dim:    #1a7aaa;
+    --green:     #3fb950;
+    --red:       #f85149;
+    --yellow:    #d29922;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --radius:    10px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ── Layout ── */
+  .layout { display: flex; min-height: 100vh; }
+
+  aside {
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .logo {
+    padding: 0 20px 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--tg);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo-sub  { font-size: 11px; color: var(--muted); }
+
+  nav { flex: 1; }
+
+  nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+
+  nav a:hover, nav a.active {
+    color: var(--text);
+    background: var(--surface2);
+    border-left-color: var(--tg);
+  }
+
+  .main { flex: 1; overflow-y: auto; }
+
+  header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .header-title { font-size: 16px; font-weight: 600; }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.off { background: var(--muted); }
+
+  /* ── Content area ── */
+  .content { padding: 28px 32px; }
+
+  /* ── Stats grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .stat-value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-value.tg     { color: var(--tg); }
+  .stat-value.green  { color: var(--green); }
+  .stat-value.red    { color: var(--red); }
+  .stat-value.yellow { color: var(--yellow); }
+
+  /* ── Controls ── */
+  .controls {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .controls-label { font-size: 13px; color: var(--muted); font-weight: 500; flex: 1; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--tg);
+    color: #fff;
+    border-color: var(--tg);
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--tg-dim); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border-color: var(--red);
+  }
+  .btn-danger:hover:not(:disabled) { background: rgba(248,81,73,.1); }
+
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--tg); color: var(--tg); }
+
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+  /* ── Two-column lower area ── */
+  .lower { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  /* ── Log table ── */
+  .log-list { overflow-y: auto; max-height: 360px; }
+
+  .log-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .log-item:last-child { border-bottom: none; }
+
+  .log-badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: 1px;
+  }
+
+  .log-badge.success { background: rgba(63,185,80,.15); color: var(--green); }
+  .log-badge.error   { background: rgba(248,81,73,.15);  color: var(--red); }
+
+  .log-title { font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+  .log-meta  { font-size: 11px; color: var(--muted); }
+
+  /* ── Feed preview ── */
+  .feed-list { overflow-y: auto; max-height: 360px; }
+
+  .feed-item {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .feed-item:last-child { border-bottom: none; }
+
+  .feed-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+
+  .feed-excerpt {
+    font-size: 12px;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .feed-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--tg);
+    text-decoration: none;
+  }
+
+  .feed-link:hover { text-decoration: underline; }
+
+  .feed-image {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 100;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.25s;
+    pointer-events: none;
+    max-width: 320px;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.ok  { border-color: var(--green); }
+  #toast.err { border-color: var(--red); }
+
+  /* ── Empty state ── */
+  .empty { padding: 40px 18px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* ── Loading ── */
+  .loading { display: inline-block; width: 12px; height: 12px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Mono ── */
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  @media (max-width: 900px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .lower { grid-template-columns: 1fr; }
+    aside { display: none; }
+    .content { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside>
+    <div class="logo">
+      <div class="logo-icon">✈</div>
+      <div>
+        <div class="logo-text">TG Bot</div>
+        <div class="logo-sub">Content Poster</div>
+      </div>
+    </div>
+    <nav>
+      <a class="active" onclick="showSection('dashboard')">📊 &nbsp;Dashboard</a>
+      <a onclick="showSection('feed')">📰 &nbsp;Feed Preview</a>
+      <a onclick="showSection('logs')">📋 &nbsp;Post Logs</a>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header>
+      <span class="header-title">Content Bot Dashboard</span>
+      <div class="status-pill">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">Checking…</span>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Posted</div>
+          <div class="stat-value tg" id="stat-total">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Successful</div>
+          <div class="stat-value green" id="stat-success">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Errors</div>
+          <div class="stat-value red" id="stat-errors">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Scheduler</div>
+          <div class="stat-value yellow" id="stat-sched">—</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <span class="controls-label">🤖 Scheduler control</span>
+        <button class="btn btn-primary" id="btn-start" onclick="startBot()">▶ Start</button>
+        <button class="btn btn-danger"  id="btn-stop"  onclick="stopBot()">■ Stop</button>
+        <button class="btn btn-ghost"   id="btn-postnow" onclick="postNow()">⚡ Post Now</button>
+        <button class="btn btn-ghost"   onclick="testConnection()">🔗 Test Token</button>
+        <button class="btn btn-ghost btn-sm" onclick="refreshAll()" title="Refresh">↻</button>
+      </div>
+
+      <!-- Lower panels -->
+      <div class="lower">
+
+        <!-- Recent Logs -->
+        <div class="panel" id="panel-logs">
+          <div class="panel-header">
+            📋 Recent Posts
+            <button class="btn btn-ghost btn-sm" onclick="loadLogs()">Refresh</button>
+          </div>
+          <div class="log-list" id="log-list">
+            <div class="empty">Loading logs…</div>
+          </div>
+        </div>
+
+        <!-- Feed Preview -->
+        <div class="panel" id="panel-feed">
+          <div class="panel-header">
+            📰 RSS Feed Preview
+            <button class="btn btn-ghost btn-sm" onclick="loadFeed()">Reload</button>
+          </div>
+          <div class="feed-list" id="feed-list">
+            <div class="empty">Loading feed…</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+  // ─── Toast ───────────────────────────────────────────────────────────────
+  let toastTimer;
+  function toast(msg, type = 'ok') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+  }
+
+  // ─── Stats ───────────────────────────────────────────────────────────────
+  async function loadStats() {
+    const res = await fetch('/api/stats');
+    const d = await res.json();
+
+    document.getElementById('stat-total').textContent   = d.total_posted ?? 0;
+    document.getElementById('stat-success').textContent = d.success ?? 0;
+    document.getElementById('stat-errors').textContent  = d.errors  ?? 0;
+    document.getElementById('stat-sched').textContent   = d.scheduler_running ? 'Running' : 'Stopped';
+
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (d.scheduler_running) {
+      dot.className  = 'dot on';
+      text.textContent = 'Active';
+    } else {
+      dot.className  = 'dot off';
+      text.textContent = 'Stopped';
+    }
+  }
+
+  // ─── Logs ─────────────────────────────────────────────────────────────────
+  async function loadLogs() {
+    const res = await fetch('/api/logs');
+    const logs = await res.json();
+    const el = document.getElementById('log-list');
+
+    if (!logs.length) {
+      el.innerHTML = '<div class="empty">No posts yet.</div>';
+      return;
+    }
+
+    el.innerHTML = logs.map(l => `
+      <div class="log-item">
+        <span class="log-badge ${l.status}">${l.status}</span>
+        <div>
+          <div class="log-title">${escHtml(l.title || '—')}</div>
+          <div class="log-meta mono">${l.created_at || ''}</div>
+          ${l.message ? `<div class="log-meta" style="color:var(--red)">${escHtml(l.message)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ─── Feed preview ─────────────────────────────────────────────────────────
+  async function loadFeed() {
+    const el = document.getElementById('feed-list');
+    el.innerHTML = '<div class="empty"><span class="loading"></span> Fetching RSS…</div>';
+    const res = await fetch('/api/preview-feed');
+    const d   = await res.json();
+
+    if (!d.ok) {
+      el.innerHTML = `<div class="empty" style="color:var(--red)">⚠ ${escHtml(d.error)}</div>`;
+      return;
+    }
+
+    if (!d.posts.length) {
+      el.innerHTML = '<div class="empty">No posts in feed.</div>';
+      return;
+    }
+
+    el.innerHTML = d.posts.map(p => `
+      <div class="feed-item">
+        ${p.image ? `<img class="feed-image" src="${escHtml(p.image)}" alt="" loading="lazy">` : ''}
+        <div class="feed-title">${escHtml(p.title)}</div>
+        <div class="feed-excerpt">${escHtml(p.content)}</div>
+        <a class="feed-link" href="${escHtml(p.link)}" target="_blank">🔗 Open →</a>
+      </div>
+    `).join('');
+  }
+
+  // ─── Actions ─────────────────────────────────────────────────────────────
+  async function startBot() {
+    const btn = document.getElementById('btn-start');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Starting…';
+    const res = await fetch('/api/start', { method: 'POST' });
+    const d   = await res.json();
+    toast(d.message, d.ok ? 'ok' : 'err');
+    btn.disabled = false;
+    btn.innerHTML = '▶ Start';
+    refreshAll();
+  }
+
+  async function stopBot() {
+    const btn = document.getElementById('btn-stop');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Stopping…';
+    await fetch('/api/stop', { method: 'POST' });
+    toast('Scheduler stopped.');
+    btn.disabled = false;
+    btn.innerHTML = '■ Stop';
+    refreshAll();
+  }
+
+  async function postNow() {
+    const btn = document.getElementById('btn-postnow');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Posting…';
+    await fetch('/api/post-now', { method: 'POST' });
+    toast('⚡ Posting triggered in background.');
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Post Now';
+    setTimeout(() => { loadLogs(); loadStats(); }, 3000);
+  }
+
+  async function testConnection() {
+    const res = await fetch('/api/test-connection');
+    const d   = await res.json();
+    if (d.ok) {
+      toast(`✅ Connected as @${d.result?.username}`, 'ok');
+    } else {
+      toast(`❌ ${d.description || 'Connection failed'}`, 'err');
+    }
+  }
+
+  function refreshAll() {
+    loadStats();
+    loadLogs();
+  }
+
+  // ─── Sections (minimal) ──────────────────────────────────────────────────
+  function showSection(s) {
+    document.querySelectorAll('nav a').forEach((a, i) => {
+      a.classList.toggle('active', ['dashboard','feed','logs'][i] === s);
+    });
+    if (s === 'feed') loadFeed();
+    if (s === 'logs') loadLogs();
+  }
+
+  // ─── Utils ───────────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+  loadStats();
+  loadLogs();
+  loadFeed();
+  setInterval(loadStats, 15000);  // auto-refresh stats every 15s
+</script>
+</body>
+</html>
