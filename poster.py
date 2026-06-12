@@ -1,5 +1,5 @@
 import requests
-from config import BOT_TOKEN, CHANNEL_USERNAME
+from config import BOT_TOKEN, CHANNEL_USERNAMES
 from content_processor import build_inline_keyboard
 
 
@@ -13,21 +13,27 @@ def _keyboard_payload(post: dict) -> dict:
     }
 
 
-def post_to_channel(text: str, post: dict) -> dict:
-    """Send a message (with photo if available, else text) to the channel."""
+def post_to_channel(text: str, post: dict) -> list[dict]:
+    """Send a message (with photo if available, else text) to all configured channels."""
     image_url = post.get("image")
     reply_markup = _keyboard_payload(post)
+    results = []
 
-    if image_url:
-        return _send_photo(image_url, text, reply_markup)
-    return _send_message(text, reply_markup)
+    for chat_id in CHANNEL_USERNAMES:
+        if image_url:
+            result = _send_photo(chat_id, image_url, text, reply_markup)
+        else:
+            result = _send_message(chat_id, text, reply_markup)
+        results.append({"channel": chat_id, "result": result})
+
+    return results
 
 
-def _send_message(text: str, reply_markup: dict) -> dict:
+def _send_message(chat_id: str, text: str, reply_markup: dict) -> dict:
     resp = requests.post(
         f"{BASE}/sendMessage",
         json={
-            "chat_id": CHANNEL_USERNAME,
+            "chat_id": chat_id,
             "text": text,
             "parse_mode": "Markdown",
             "disable_web_page_preview": False,
@@ -38,11 +44,11 @@ def _send_message(text: str, reply_markup: dict) -> dict:
     return resp.json()
 
 
-def _send_photo(photo_url: str, caption: str, reply_markup: dict) -> dict:
+def _send_photo(chat_id: str, photo_url: str, caption: str, reply_markup: dict) -> dict:
     resp = requests.post(
         f"{BASE}/sendPhoto",
         json={
-            "chat_id": CHANNEL_USERNAME,
+            "chat_id": chat_id,
             "photo": photo_url,
             "caption": caption[:1024],  # Telegram caption limit
             "parse_mode": "Markdown",

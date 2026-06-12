@@ -11,6 +11,30 @@ _thread: threading.Thread | None = None
 _stop_event = threading.Event()
 
 
+def _handle_results(post: dict, results: list[dict]):
+    """Process per-channel results, mark posted if any succeeded, log each."""
+    any_success = False
+    errors = []
+
+    for r in results:
+        chat_id = r["channel"]
+        res = r["result"]
+        if res.get("ok"):
+            any_success = True
+        else:
+            errors.append(f"{chat_id}: {res.get('description', 'Unknown error')}")
+
+    if any_success:
+        mark_posted(post["link"], post["title"])
+        log_post(post["title"], post["link"], "success")
+        for err in errors:
+            log_post(post["title"], post["link"], "error", err)
+    else:
+        log_post(post["title"], post["link"], "error", "; ".join(errors) or "Unknown error")
+
+    return any_success
+
+
 def _run_loop():
     set_setting("running", "1")
     while not _stop_event.is_set():
@@ -23,14 +47,8 @@ def _run_loop():
                     continue
 
                 message = format_post(post)
-                result = post_to_channel(message, post)
-
-                if result.get("ok"):
-                    mark_posted(post["link"], post["title"])
-                    log_post(post["title"], post["link"], "success")
-                else:
-                    err = result.get("description", "Unknown error")
-                    log_post(post["title"], post["link"], "error", err)
+                results = post_to_channel(message, post)
+                _handle_results(post, results)
 
                 # small gap between each post
                 _stop_event.wait(10)
@@ -72,20 +90,17 @@ def post_now() -> dict:
     def _once():
         try:
             posts = fetch_posts()
-            results = []
+            results_out = []
             for post in posts:
                 if is_already_posted(post["link"]):
                     continue
                 message = format_post(post)
-                result = post_to_channel(message, post)
-                if result.get("ok"):
-                    mark_posted(post["link"], post["title"])
-                    log_post(post["title"], post["link"], "success")
-                    results.append({"title": post["title"], "status": "ok"})
-                else:
-                    err = result.get("description", "Unknown")
-                    log_post(post["title"], post["link"], "error", err)
-                    results.append({"title": post["title"], "status": "error", "error": err})
+                results = post_to_channel(message, post)
+                success = _handle_results(post, results)
+                results_out.append({
+                    "title": post["title"],
+                    "status": "ok" if success else "error",
+                })
                 time.sleep(10)
         except Exception as e:
             log_post("MANUAL POST ERROR", "", "error", str(e))

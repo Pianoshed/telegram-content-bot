@@ -4,7 +4,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "@your_channel")
+
+_default_channels = "@naijanetmovies,@naijanetmovies1,@naijanetmovies2"
+CHANNEL_USERNAMES = [
+    c.strip() for c in os.environ.get("CHANNEL_USERNAMES", _default_channels).split(",") if c.strip()
+]
+
 RSS_URL = os.environ.get("RSS_URL", "https://9janetmovies.com.ng/rss")
 POST_INTERVAL = 3600
 POSTS_PER_CYCLE = 5

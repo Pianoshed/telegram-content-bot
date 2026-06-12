@@ -1,4 +1,6 @@
-from config import CHANNEL_USERNAME
+from config import CHANNEL_USERNAMES
+
+PRIMARY_CHANNEL = CHANNEL_USERNAMES[0]
 
 
 def format_post(post: dict) -> str:
@@ -17,7 +19,7 @@ def format_post(post: dict) -> str:
         f"{tag_line}"
         f"👉 [Watch / Read More]({link})\n\n"
         f"━━━━━━━━━━━━━━\n"
-        f"🔔 Stay updated — join {CHANNEL_USERNAME}"
+        f"🔔 Stay updated — join {PRIMARY_CHANNEL}"
     )
 
 
@@ -29,6 +31,6 @@ def build_inline_keyboard(post: dict) -> list:
             {"text": "📢 Share", "url": f"https://t.me/share/url?url={post['link']}&text={post['title']}"},
         ],
         [
-            {"text": f"➕ Join {CHANNEL_USERNAME}", "url": f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}"},
+            {"text": f"➕ Join {PRIMARY_CHANNEL}", "url": f"https://t.me/{PRIMARY_CHANNEL.lstrip('@')}"},
         ],
     ]
