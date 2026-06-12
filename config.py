@@ -10,3 +10,4 @@ POST_INTERVAL = 3600
 POSTS_PER_CYCLE = 5
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "bot.db")
 SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-secret")
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "my-key")
