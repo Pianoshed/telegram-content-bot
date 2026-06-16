@@ -1,3 +1,4 @@
+import re
 import requests
 from config import BOT_TOKEN, CHANNEL_USERNAMES
 from content_processor import build_inline_keyboard
@@ -11,6 +12,26 @@ def _keyboard_payload(post: dict) -> dict:
     return {
         "inline_keyboard": buttons
     }
+
+
+def _safe_truncate_html(text: str, limit: int = 1024) -> str:
+    """Truncate without cutting mid-tag, and close any tags left dangling."""
+    if len(text) <= limit:
+        return text
+
+    truncated = text[:limit]
+    last_lt = truncated.rfind("<")
+    last_gt = truncated.rfind(">")
+    if last_lt > last_gt:
+        truncated = truncated[:last_lt]
+
+    for tag in ("a", "b"):
+        opens = len(re.findall(f"<{tag}[ >]", truncated))
+        closes = truncated.count(f"</{tag}>")
+        if opens > closes:
+            truncated += f"</{tag}>"
+
+    return truncated
 
 
 def post_to_channel(text: str, post: dict) -> list[dict]:
@@ -35,7 +56,7 @@ def _send_message(chat_id: str, text: str, reply_markup: dict) -> dict:
         json={
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
             "disable_web_page_preview": False,
             "reply_markup": reply_markup,
         },
@@ -50,8 +71,8 @@ def _send_photo(chat_id: str, photo_url: str, caption: str, reply_markup: dict) 
         json={
             "chat_id": chat_id,
             "photo": photo_url,
-            "caption": caption[:1024],  # Telegram caption limit
-            "parse_mode": "Markdown",
+            "caption": _safe_truncate_html(caption, 1024),
+            "parse_mode": "HTML",
             "reply_markup": reply_markup,
         },
         timeout=15,
