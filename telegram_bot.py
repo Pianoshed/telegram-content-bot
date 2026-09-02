@@ -55,22 +55,29 @@ SYSTEM_PROMPT = (
 
 async def get_ai_reply(user_message: str, history: list[dict]) -> str:
     """Call Gemini (free tier) for a conversational reply, using recent history for context."""
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_API_KEY)
+    from google import genai
+    from google.genai import types
 
-    # Gemini's chat format uses role "model" instead of "assistant", and
-    # wraps text in a "parts" list.
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    # Gemini's chat format uses role "model" instead of "assistant".
     gemini_history = [
-        {"role": "model" if h["role"] == "assistant" else "user", "parts": [h["content"]]}
+        types.Content(
+            role="model" if h["role"] == "assistant" else "user",
+            parts=[types.Part.from_text(text=h["content"])],
+        )
         for h in history
     ]
 
     def _call():
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            system_instruction=SYSTEM_PROMPT,
+        chat = client.chats.create(
+            # "-latest" tracks Google's current free-tier Flash model, so this
+            # doesn't hard-break every time they retire a dated model name
+            # (which is what happened with gemini-2.0-flash).
+            model="gemini-flash-latest",
+            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+            history=gemini_history,
         )
-        chat = model.start_chat(history=gemini_history)
         response = chat.send_message(user_message)
         return response.text
 
