@@ -1,17 +1,30 @@
 import threading
 import time
 
-from config import POST_INTERVAL
+from config import DAILY_POST_CAP, REPOST_COOLDOWN_DAYS
 from content_fetcher import fetch_posts
 from content_processor import format_post
 from poster import post_to_channel
-from database import is_already_posted, mark_posted, log_post, set_setting
+from database import (
+    is_already_posted,
+    mark_posted,
+    log_post,
+    set_setting,
+    get_daily_post_count,
+    increment_daily_post_count,
+    get_repost_candidate,
+    mark_reposted,
+)
 
 _thread: threading.Thread | None = None
 _stop_event = threading.Event()
 
+# Spread the daily cap evenly across 24h instead of bursting.
+# e.g. DAILY_POST_CAP=50 -> a post roughly every 28.8 minutes.
+POST_SPACING_SECONDS = 86400 / DAILY_POST_CAP
 
-def _handle_results(post: dict, results: list[dict]):
+
+def _handle_results(post: dict, results: list[dict], is_repost: bool = False):
     """Process per-channel results, mark posted if any succeeded, log each."""
     any_success = False
     errors = []
@@ -25,8 +38,13 @@ def _handle_results(post: dict, results: list[dict]):
             errors.append(f"{chat_id}: {res.get('description', 'Unknown error')}")
 
     if any_success:
-        mark_posted(post["link"], post["title"])
-        log_post(post["title"], post["link"], "success")
+        if is_repost:
+            mark_reposted(post["link"])
+            log_post(post["title"], post["link"], "success", "repost")
+        else:
+            mark_posted(post["link"], post["title"], post)
+            log_post(post["title"], post["link"], "success")
+        increment_daily_post_count()
         for err in errors:
             log_post(post["title"], post["link"], "error", err)
     else:
@@ -35,29 +53,46 @@ def _handle_results(post: dict, results: list[dict]):
     return any_success
 
 
+def _next_item():
+    """Pick the next thing to post: prefer fresh content, fall back to a
+    repost of older queued content so the channel doesn't go quiet."""
+    posts = fetch_posts()
+    for post in posts:
+        if not is_already_posted(post["link"]):
+            return post, False  # (post, is_repost)
+
+    candidate = get_repost_candidate(REPOST_COOLDOWN_DAYS)
+    if candidate:
+        return candidate, True
+
+    return None, False
+
+
 def _run_loop():
     set_setting("running", "1")
     while not _stop_event.is_set():
         try:
-            posts = fetch_posts()
-            for post in posts:
-                if _stop_event.is_set():
-                    break
-                if is_already_posted(post["link"]):
-                    continue
+            if get_daily_post_count() >= DAILY_POST_CAP:
+                # Cap hit for today — recheck hourly; resets automatically
+                # at midnight via get_daily_post_count().
+                _stop_event.wait(3600)
+                continue
 
+            post, is_repost = _next_item()
+            if post:
                 message = format_post(post)
                 results = post_to_channel(message, post)
-                _handle_results(post, results)
-
-                # small gap between each post
-                _stop_event.wait(10)
+                _handle_results(post, results, is_repost=is_repost)
+            else:
+                log_post(
+                    "SCHEDULER", "", "error",
+                    "Nothing to post: no new content and no repost candidates available",
+                )
 
         except Exception as exc:
             log_post("SCHEDULER ERROR", "", "error", str(exc))
 
-        # wait for next cycle (interruptible)
-        _stop_event.wait(POST_INTERVAL)
+        _stop_event.wait(POST_SPACING_SECONDS)
 
     set_setting("running", "0")
 
@@ -86,22 +121,17 @@ def is_running() -> bool:
 
 
 def post_now() -> dict:
-    """Manually trigger one cycle (runs in background thread)."""
+    """Manually trigger one post right now — bypasses the daily cap and
+    spacing, but still prefers fresh content over a repost."""
     def _once():
         try:
-            posts = fetch_posts()
-            results_out = []
-            for post in posts:
-                if is_already_posted(post["link"]):
-                    continue
-                message = format_post(post)
-                results = post_to_channel(message, post)
-                success = _handle_results(post, results)
-                results_out.append({
-                    "title": post["title"],
-                    "status": "ok" if success else "error",
-                })
-                time.sleep(10)
+            post, is_repost = _next_item()
+            if not post:
+                log_post("MANUAL POST", "", "error", "Nothing available to post")
+                return
+            message = format_post(post)
+            results = post_to_channel(message, post)
+            _handle_results(post, results, is_repost=is_repost)
         except Exception as e:
             log_post("MANUAL POST ERROR", "", "error", str(e))
 

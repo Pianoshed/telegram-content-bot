@@ -4,6 +4,7 @@ import database as db
 import scheduler
 from poster import test_connection
 from content_fetcher import fetch_posts
+import telegram_bot
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -17,6 +18,15 @@ db.init_db()
 def index():
     return render_template("index.html")
 
+@app.route("/api/bot/start", methods=["POST"])
+def api_bot_start():
+    ok = telegram_bot.start()
+    return jsonify({"ok": ok, "message": "Bot started" if ok else "Already running"})
+
+@app.route("/api/bot/stop", methods=["POST"])
+def api_bot_stop():
+    telegram_bot.stop()
+    return jsonify({"ok": True, "message": "Bot stopped"})
 
 # ─── API ─────────────────────────────────────────────────────────────────────
 

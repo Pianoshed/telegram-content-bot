@@ -51,33 +51,42 @@ def post_to_channel(text: str, post: dict) -> list[dict]:
 
 
 def _send_message(chat_id: str, text: str, reply_markup: dict) -> dict:
-    resp = requests.post(
-        f"{BASE}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": False,
-            "reply_markup": reply_markup,
-        },
-        timeout=15,
-    )
-    return resp.json()
+    try:
+        resp = requests.post(
+            f"{BASE}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": False,
+                "reply_markup": reply_markup,
+            },
+            timeout=15,
+        )
+        return resp.json()
+    except requests.RequestException as e:
+        # Network-level failure (timeout, connection reset, etc.) rather than
+        # a Telegram API error — shaped the same way so callers (_handle_results
+        # in scheduler.py) can treat both uniformly via .get("ok").
+        return {"ok": False, "description": f"Network error: {e}"}
 
 
 def _send_photo(chat_id: str, photo_url: str, caption: str, reply_markup: dict) -> dict:
-    resp = requests.post(
-        f"{BASE}/sendPhoto",
-        json={
-            "chat_id": chat_id,
-            "photo": photo_url,
-            "caption": _safe_truncate_html(caption, 1024),
-            "parse_mode": "HTML",
-            "reply_markup": reply_markup,
-        },
-        timeout=15,
-    )
-    return resp.json()
+    try:
+        resp = requests.post(
+            f"{BASE}/sendPhoto",
+            json={
+                "chat_id": chat_id,
+                "photo": photo_url,
+                "caption": _safe_truncate_html(caption, 1024),
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup,
+            },
+            timeout=15,
+        )
+        return resp.json()
+    except requests.RequestException as e:
+        return {"ok": False, "description": f"Network error: {e}"}
 
 
 def test_connection() -> dict:

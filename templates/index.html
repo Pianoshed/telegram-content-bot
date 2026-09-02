@@ -17,6 +17,7 @@
     --green:     #3fb950;
     --red:       #f85149;
     --yellow:    #d29922;
+    --purple:    #a371f7;
     --text:      #e6edf3;
     --muted:     #8b949e;
     --radius:    10px;
@@ -98,9 +99,13 @@
     position: sticky;
     top: 0;
     z-index: 10;
+    gap: 16px;
+    flex-wrap: wrap;
   }
 
   .header-title { font-size: 16px; font-weight: 600; }
+
+  .status-group { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .status-pill {
     display: flex;
@@ -113,6 +118,8 @@
     border: 1px solid var(--border);
     font-weight: 500;
   }
+
+  .status-pill .pill-label { color: var(--muted); }
 
   .dot {
     width: 8px; height: 8px;
@@ -129,7 +136,7 @@
   /* ── Stats grid ── */
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 16px;
     margin-bottom: 28px;
   }
@@ -147,21 +154,25 @@
   .stat-value.green  { color: var(--green); }
   .stat-value.red    { color: var(--red); }
   .stat-value.yellow { color: var(--yellow); }
+  .stat-value.purple { color: var(--purple); }
+  .stat-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
   /* ── Controls ── */
   .controls {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 28px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
   }
 
-  .controls-label { font-size: 13px; color: var(--muted); font-weight: 500; flex: 1; }
+  .controls:last-of-type { margin-bottom: 28px; }
+
+  .controls-label { font-size: 13px; color: var(--muted); font-weight: 500; flex: 1; min-width: 160px; }
 
   .btn {
     display: inline-flex;
@@ -355,9 +366,17 @@
   <div class="main">
     <header>
       <span class="header-title">Content Bot Dashboard</span>
-      <div class="status-pill">
-        <span class="dot" id="status-dot"></span>
-        <span id="status-text">Checking…</span>
+      <div class="status-group">
+        <div class="status-pill">
+          <span class="pill-label">Scheduler</span>
+          <span class="dot" id="status-dot-sched"></span>
+          <span id="status-text-sched">Checking…</span>
+        </div>
+        <div class="status-pill">
+          <span class="pill-label">Bot</span>
+          <span class="dot" id="status-dot-bot"></span>
+          <span id="status-text-bot">Checking…</span>
+        </div>
       </div>
     </header>
 
@@ -370,6 +389,11 @@
           <div class="stat-value tg" id="stat-total">—</div>
         </div>
         <div class="stat-card">
+          <div class="stat-label">Posted Today</div>
+          <div class="stat-value yellow" id="stat-today">—</div>
+          <div class="stat-hint" id="stat-today-hint"></div>
+        </div>
+        <div class="stat-card">
           <div class="stat-label">Successful</div>
           <div class="stat-value green" id="stat-success">—</div>
         </div>
@@ -378,19 +402,30 @@
           <div class="stat-value red" id="stat-errors">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Scheduler</div>
-          <div class="stat-value yellow" id="stat-sched">—</div>
+          <div class="stat-label">Members Joined</div>
+          <div class="stat-value purple" id="stat-members">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Conversations</div>
+          <div class="stat-value tg" id="stat-convos">—</div>
         </div>
       </div>
 
-      <!-- Controls -->
+      <!-- Scheduler controls -->
       <div class="controls">
-        <span class="controls-label">🤖 Scheduler control</span>
-        <button class="btn btn-primary" id="btn-start" onclick="startBot()">▶ Start</button>
-        <button class="btn btn-danger"  id="btn-stop"  onclick="stopBot()">■ Stop</button>
+        <span class="controls-label">📤 Posting scheduler</span>
+        <button class="btn btn-primary" id="btn-start" onclick="startScheduler()">▶ Start</button>
+        <button class="btn btn-danger"  id="btn-stop"  onclick="stopScheduler()">■ Stop</button>
         <button class="btn btn-ghost"   id="btn-postnow" onclick="postNow()">⚡ Post Now</button>
         <button class="btn btn-ghost"   onclick="testConnection()">🔗 Test Token</button>
         <button class="btn btn-ghost btn-sm" onclick="refreshAll()" title="Refresh">↻</button>
+      </div>
+
+      <!-- Bot controls -->
+      <div class="controls">
+        <span class="controls-label">💬 Conversation bot (replies + welcomes)</span>
+        <button class="btn btn-primary" id="btn-bot-start" onclick="startConvoBot()">▶ Start</button>
+        <button class="btn btn-danger"  id="btn-bot-stop"  onclick="stopConvoBot()">■ Stop</button>
       </div>
 
       <!-- Lower panels -->
@@ -442,20 +477,26 @@
     const res = await fetch('/api/stats');
     const d = await res.json();
 
-    document.getElementById('stat-total').textContent   = d.total_posted ?? 0;
-    document.getElementById('stat-success').textContent = d.success ?? 0;
-    document.getElementById('stat-errors').textContent  = d.errors  ?? 0;
-    document.getElementById('stat-sched').textContent   = d.scheduler_running ? 'Running' : 'Stopped';
+    document.getElementById('stat-total').textContent    = d.total_posted ?? 0;
+    document.getElementById('stat-today').textContent    = d.posts_today ?? 0;
+    document.getElementById('stat-success').textContent  = d.success ?? 0;
+    document.getElementById('stat-errors').textContent   = d.errors  ?? 0;
+    document.getElementById('stat-members').textContent  = d.members_joined ?? 0;
+    document.getElementById('stat-convos').textContent   = d.conversations ?? 0;
 
-    const dot  = document.getElementById('status-dot');
-    const text = document.getElementById('status-text');
-    if (d.scheduler_running) {
-      dot.className  = 'dot on';
-      text.textContent = 'Active';
-    } else {
-      dot.className  = 'dot off';
-      text.textContent = 'Stopped';
+    if (d.daily_post_cap) {
+      document.getElementById('stat-today-hint').textContent = `of ${d.daily_post_cap} daily cap`;
     }
+
+    setPill('sched', d.scheduler_running);
+    setPill('bot', d.bot_running);
+  }
+
+  function setPill(key, isOn) {
+    const dot  = document.getElementById(`status-dot-${key}`);
+    const text = document.getElementById(`status-text-${key}`);
+    dot.className = isOn ? 'dot on' : 'dot off';
+    text.textContent = isOn ? 'Running' : 'Stopped';
   }
 
   // ─── Logs ─────────────────────────────────────────────────────────────────
@@ -508,8 +549,8 @@
     `).join('');
   }
 
-  // ─── Actions ─────────────────────────────────────────────────────────────
-  async function startBot() {
+  // ─── Scheduler actions ─────────────────────────────────────────────────────
+  async function startScheduler() {
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
     btn.innerHTML = '<span class="loading"></span> Starting…';
@@ -521,7 +562,7 @@
     refreshAll();
   }
 
-  async function stopBot() {
+  async function stopScheduler() {
     const btn = document.getElementById('btn-stop');
     btn.disabled = true;
     btn.innerHTML = '<span class="loading"></span> Stopping…';
@@ -551,6 +592,31 @@
     } else {
       toast(`❌ ${d.description || 'Connection failed'}`, 'err');
     }
+  }
+
+  // ─── Conversation bot actions ───────────────────────────────────────────────
+  async function startConvoBot() {
+    const btn = document.getElementById('btn-bot-start');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Starting…';
+    const res = await fetch('/api/bot/start', { method: 'POST' });
+    const d   = await res.json();
+    toast(d.message, d.ok ? 'ok' : 'err');
+    btn.disabled = false;
+    btn.innerHTML = '▶ Start';
+    refreshAll();
+  }
+
+  async function stopConvoBot() {
+    const btn = document.getElementById('btn-bot-stop');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Stopping…';
+    const res = await fetch('/api/bot/stop', { method: 'POST' });
+    const d   = await res.json();
+    toast(d.message || 'Bot stopped.');
+    btn.disabled = false;
+    btn.innerHTML = '■ Stop';
+    refreshAll();
   }
 
   function refreshAll() {
