@@ -26,7 +26,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, ANTHROPIC_API_KEY
+from config import BOT_TOKEN, GEMINI_API_KEY
 import database as db
 
 logger = logging.getLogger(__name__)
@@ -54,17 +54,29 @@ SYSTEM_PROMPT = (
 # ─── Conversation handling ────────────────────────────────────────────────────
 
 async def get_ai_reply(user_message: str, history: list[dict]) -> str:
-    """Call Claude for a conversational reply, using recent history for context."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    messages = history + [{"role": "user", "content": user_message}]
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=400,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    )
-    return response.content[0].text
+    """Call Gemini (free tier) for a conversational reply, using recent history for context."""
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+
+    # Gemini's chat format uses role "model" instead of "assistant", and
+    # wraps text in a "parts" list.
+    gemini_history = [
+        {"role": "model" if h["role"] == "assistant" else "user", "parts": [h["content"]]}
+        for h in history
+    ]
+
+    def _call():
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction=SYSTEM_PROMPT,
+        )
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(user_message)
+        return response.text
+
+    # The SDK call is blocking (sync HTTP under the hood) — run it off the
+    # event loop thread so it doesn't stall other bot updates while waiting.
+    return await asyncio.to_thread(_call)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
