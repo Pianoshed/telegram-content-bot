@@ -27,7 +27,13 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, GEMINI_API_KEY, CHANNEL_USERNAMES
+from config import (
+    BOT_TOKEN,
+    GEMINI_API_KEY,
+    CHANNEL_USERNAMES,
+    BACKEND_API_URL,
+    INTERNAL_API_KEY,
+)
 import database as db
 
 logger = logging.getLogger(__name__)
@@ -124,7 +130,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.log_conversation(chat_id, user.id, text, reply, source="ai")
 
 
-SEARCH_API_URL = "https://9janetmovies.com.ng/api/search"
+# NOTE: previously pointed at the public site domain
+# (https://9janetmovies.com.ng/api/search), which 404s — that domain serves
+# the Next.js frontend, not the Flask backend. The frontend itself calls the
+# backend via NEXT_PUBLIC_API_URL and sends an X-Internal-Key header; the bot
+# needs to do the same. Set BACKEND_API_URL / INTERNAL_API_KEY in config.py
+# (or the environment) to the same values used by the Next.js deployment.
+SEARCH_API_URL = f"{BACKEND_API_URL}/search"
 
 
 async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -136,7 +148,12 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     def _call():
-        resp = requests.get(SEARCH_API_URL, params={"q": query}, timeout=10)
+        resp = requests.get(
+            SEARCH_API_URL,
+            params={"q": query},
+            headers={"X-Internal-Key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {},
+            timeout=10,
+        )
         resp.raise_for_status()
         return resp.json()
 

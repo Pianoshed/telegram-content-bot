@@ -23,3 +23,7 @@ DAILY_POST_CAP = int(os.environ.get("DAILY_POST_CAP", 50))
 REPOST_COOLDOWN_DAYS = int(os.environ.get("REPOST_COOLDOWN_DAYS", 14))
 RANDOM_POST_MIN_HOURS = float(os.environ.get("RANDOM_POST_MIN_HOURS", 2))
 RANDOM_POST_MAX_HOURS = float(os.environ.get("RANDOM_POST_MAX_HOURS", 6))
+
+
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "http://127.0.0.1:5000/api")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
