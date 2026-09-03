@@ -15,8 +15,9 @@ Requires: pip install python-telegram-bot==21.* anthropic
 import logging
 import threading
 import asyncio
+import requests
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -26,7 +27,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, GEMINI_API_KEY
+from config import BOT_TOKEN, GEMINI_API_KEY, CHANNEL_USERNAMES
 import database as db
 
 logger = logging.getLogger(__name__)
@@ -55,8 +56,10 @@ SYSTEM_PROMPT = (
 
 async def get_ai_reply(user_message: str, history: list[dict]) -> str:
     """Call Gemini (free tier) for a conversational reply, using recent history for context."""
+    import time
     from google import genai
     from google.genai import types
+    from google.genai import errors
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -78,8 +81,19 @@ async def get_ai_reply(user_message: str, history: list[dict]) -> str:
             config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
             history=gemini_history,
         )
-        response = chat.send_message(user_message)
-        return response.text
+        last_exc = None
+        for attempt in range(3):
+            try:
+                response = chat.send_message(user_message)
+                return response.text
+            except errors.ServerError as e:
+                # 503 "high demand" on the free tier is usually transient —
+                # worth a couple of short retries before giving up.
+                last_exc = e
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+        raise last_exc
 
     # The SDK call is blocking (sync HTTP under the hood) — run it off the
     # event loop thread so it doesn't stall other bot updates while waiting.
@@ -110,18 +124,92 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.log_conversation(chat_id, user.id, text, reply, source="ai")
 
 
+SEARCH_API_URL = "https://9janetmovies.com.ng/api/search"
+
+
+async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args).strip() if context.args else ""
+    if not query:
+        await update.message.reply_text(
+            "Usage: /search <movie or series name>\nExample: /search toy story"
+        )
+        return
+
+    def _call():
+        resp = requests.get(SEARCH_API_URL, params={"q": query}, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    try:
+        results = await asyncio.to_thread(_call)
+    except requests.RequestException:
+        logger.exception("Search API request failed")
+        await update.message.reply_text("Couldn't reach the search right now — try again in a bit.")
+        return
+
+    if not results:
+        await update.message.reply_text(f'No results found for "{query}".')
+        return
+
+    top = results[:5]
+    lines = [f'🔍 Results for "{query}":']
+    buttons = []
+    for r in top:
+        title = r.get("title", "Untitled")
+        year = r.get("year")
+        kind = r.get("type", "movie")
+        icon = "🎬" if kind == "movie" else "📺"
+        slug = r.get("slug", "")
+        year_str = f" ({year})" if year else ""
+        lines.append(f"{icon} {title}{year_str}")
+
+        if slug:
+            link = f"https://9janetmovies.com.ng/{kind}/{slug}"
+            buttons.append([InlineKeyboardButton(f"▶️ {title[:30]}", url=link)])
+
+    reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+    text = "\n".join(lines)
+    poster = top[0].get("poster_url")
+
+    if poster:
+        await update.message.reply_photo(photo=poster, caption=text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
+async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [InlineKeyboardButton(f"➕ Join {ch}", url=f"https://t.me/{ch.lstrip('@')}")]
+        for ch in CHANNEL_USERNAMES
+    ]
+    await update.message.reply_text(
+        "📢 Never miss a new movie or series — join our channel:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hey! I'm live in this group — ask me anything.")
+    await update.message.reply_text(
+        "Hey! I'm live in this group — ask me anything, try /search <title> to find a "
+        "movie or series, or /invite to grab our channel link."
+    )
 
 
 # ─── Auto-welcome ──────────────────────────────────────────────────────────────
 
 async def welcome_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [InlineKeyboardButton(f"➕ Join {ch}", url=f"https://t.me/{ch.lstrip('@')}")]
+        for ch in CHANNEL_USERNAMES
+    ]
     for member in update.message.new_chat_members:
         if member.is_bot:
             continue
         name = member.first_name or member.username or "there"
-        await update.message.reply_text(WELCOME_TEMPLATE.format(name=name))
+        await update.message.reply_text(
+            WELCOME_TEMPLATE.format(name=name),
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
         db.log_member_join(update.effective_chat.id, member.id, name)
 
 
@@ -135,6 +223,8 @@ def _run():
     global _app
     _app = ApplicationBuilder().token(BOT_TOKEN).build()
     _app.add_handler(CommandHandler("start", cmd_start))
+    _app.add_handler(CommandHandler("search", cmd_search))
+    _app.add_handler(CommandHandler("invite", cmd_invite))
     _app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_members))
     _app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
