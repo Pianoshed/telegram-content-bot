@@ -377,6 +377,11 @@
           <span class="dot" id="status-dot-bot"></span>
           <span id="status-text-bot">Checking…</span>
         </div>
+        <div class="status-pill">
+          <span class="pill-label">Random</span>
+          <span class="dot" id="status-dot-random"></span>
+          <span id="status-text-random">Checking…</span>
+        </div>
       </div>
     </header>
 
@@ -426,6 +431,13 @@
         <span class="controls-label">💬 Conversation bot (replies + welcomes)</span>
         <button class="btn btn-primary" id="btn-bot-start" onclick="startConvoBot()">▶ Start</button>
         <button class="btn btn-danger"  id="btn-bot-stop"  onclick="stopConvoBot()">■ Stop</button>
+      </div>
+
+      <!-- Random poster controls -->
+      <div class="controls">
+        <span class="controls-label">🎲 Random spotlight posts (independent of scheduler)</span>
+        <button class="btn btn-primary" id="btn-random-start" onclick="startRandomPoster()">▶ Start</button>
+        <button class="btn btn-danger"  id="btn-random-stop"  onclick="stopRandomPoster()">■ Stop</button>
       </div>
 
       <!-- Lower panels -->
@@ -490,6 +502,7 @@
 
     setPill('sched', d.scheduler_running);
     setPill('bot', d.bot_running);
+    setPill('random', d.random_poster_running);
   }
 
   function setPill(key, isOn) {
@@ -614,6 +627,31 @@
     const res = await fetch('/api/bot/stop', { method: 'POST' });
     const d   = await res.json();
     toast(d.message || 'Bot stopped.');
+    btn.disabled = false;
+    btn.innerHTML = '■ Stop';
+    refreshAll();
+  }
+
+  // ─── Random poster actions ─────────────────────────────────────────────────
+  async function startRandomPoster() {
+    const btn = document.getElementById('btn-random-start');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Starting…';
+    const res = await fetch('/api/random-poster/start', { method: 'POST' });
+    const d   = await res.json();
+    toast(d.message, d.ok ? 'ok' : 'err');
+    btn.disabled = false;
+    btn.innerHTML = '▶ Start';
+    refreshAll();
+  }
+
+  async function stopRandomPoster() {
+    const btn = document.getElementById('btn-random-stop');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Stopping…';
+    const res = await fetch('/api/random-poster/stop', { method: 'POST' });
+    const d   = await res.json();
+    toast(d.message || 'Random poster stopped.');
     btn.disabled = false;
     btn.innerHTML = '■ Stop';
     refreshAll();

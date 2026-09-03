@@ -17,7 +17,7 @@ import threading
 import asyncio
 import requests
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -189,9 +189,17 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [InlineKeyboardButton(f"➕ Join {ch}", url=f"https://t.me/{ch.lstrip('@')}")]
+        for ch in CHANNEL_USERNAMES
+    ]
     await update.message.reply_text(
-        "Hey! I'm live in this group — ask me anything, try /search <title> to find a "
-        "movie or series, or /invite to grab our channel link."
+        "👋 <b>Welcome!</b> Here's what I can do:\n\n"
+        "🔍 <code>/search &lt;title&gt;</code> — find a movie or series\n"
+        "📢 <code>/invite</code> — grab our channel link\n"
+        "💬 Or just send a message — I'll chat!",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 
@@ -219,9 +227,19 @@ _app: Application | None = None
 _thread: threading.Thread | None = None
 
 
+async def _register_commands(app: Application):
+    """Sets the clickable command menu shown when a user taps the menu icon
+    in Telegram, and shown as suggestions while typing '/'."""
+    await app.bot.set_my_commands([
+        BotCommand("start", "Show the welcome menu"),
+        BotCommand("search", "Search for a movie or series"),
+        BotCommand("invite", "Get the channel link"),
+    ])
+
+
 def _run():
     global _app
-    _app = ApplicationBuilder().token(BOT_TOKEN).build()
+    _app = ApplicationBuilder().token(BOT_TOKEN).post_init(_register_commands).build()
     _app.add_handler(CommandHandler("start", cmd_start))
     _app.add_handler(CommandHandler("search", cmd_search))
     _app.add_handler(CommandHandler("invite", cmd_invite))
