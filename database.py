@@ -1,18 +1,23 @@
 import sqlite3
 import json
+from contextlib import closing
 from datetime import date
 
 from config import DATABASE_PATH
 
 
 def get_conn():
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    # WAL mode lets readers and writers work concurrently instead of
+    # blocking each other — matters now that the scheduler thread and the
+    # bot's polling thread both hit this file at once.
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
 def init_db():
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS posted_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +84,7 @@ def init_db():
 
 
 def is_already_posted(link: str) -> bool:
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         row = conn.execute(
             "SELECT 1 FROM posted_items WHERE link = ?", (link,)
         ).fetchone()
@@ -89,7 +94,7 @@ def is_already_posted(link: str) -> bool:
 def mark_posted(link: str, title: str, content: dict | None = None):
     """content: the full post dict (as returned by fetch_posts), stored so
     it can be resurfaced later as a repost without re-fetching."""
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.execute(
             "INSERT OR IGNORE INTO posted_items (link, title, content_json) VALUES (?, ?, ?)",
             (link, title, json.dumps(content) if content is not None else None),
@@ -101,7 +106,7 @@ def mark_posted(link: str, title: str, content: dict | None = None):
 
 
 def log_post(title: str, link: str, status: str, message: str = ""):
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.execute(
             "INSERT INTO post_log (title, link, status, message) VALUES (?, ?, ?, ?)",
             (title, link, status, message),
@@ -110,7 +115,7 @@ def log_post(title: str, link: str, status: str, message: str = ""):
 
 
 def get_recent_logs(limit: int = 20):
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         rows = conn.execute(
             "SELECT * FROM post_log ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
@@ -118,7 +123,7 @@ def get_recent_logs(limit: int = 20):
 
 
 def get_stats():
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         total = conn.execute(
             "SELECT value FROM bot_settings WHERE key = 'total_posted'"
         ).fetchone()["value"]
@@ -149,7 +154,7 @@ def get_stats():
 
 
 def set_setting(key: str, value: str):
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
             (key, value),
@@ -160,7 +165,7 @@ def set_setting(key: str, value: str):
 # ─── Conversation + engagement tracking (for telegram_bot.py) ────────────────
 
 def log_conversation(chat_id: int, user_id: int, message: str, reply: str, source: str):
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.execute(
             "INSERT INTO conversations (chat_id, user_id, message, reply, source) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -172,7 +177,7 @@ def log_conversation(chat_id: int, user_id: int, message: str, reply: str, sourc
 def get_conversation_history(chat_id: int, user_id: int, limit: int = 6):
     """Return the last `limit` exchanges as alternating user/assistant messages,
     oldest first, in the shape the Anthropic API expects."""
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         rows = conn.execute(
             "SELECT message, reply FROM conversations "
             "WHERE chat_id = ? AND user_id = ? "
@@ -187,7 +192,7 @@ def get_conversation_history(chat_id: int, user_id: int, limit: int = 6):
 
 
 def log_member_join(chat_id: int, user_id: int, name: str):
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.execute(
             "INSERT INTO member_joins (chat_id, user_id, name) VALUES (?, ?, ?)",
             (chat_id, user_id, name),
@@ -196,7 +201,7 @@ def log_member_join(chat_id: int, user_id: int, name: str):
 
 
 def get_members_joined_count(since_days: int = 7) -> int:
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         row = conn.execute(
             "SELECT COUNT(*) as c FROM member_joins "
             "WHERE joined_at >= datetime('now', ?)",
@@ -212,7 +217,7 @@ def _today_str() -> str:
 
 
 def get_daily_post_count() -> int:
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         stored_date = conn.execute(
             "SELECT value FROM bot_settings WHERE key = 'posts_today_date'"
         ).fetchone()
@@ -225,7 +230,7 @@ def get_daily_post_count() -> int:
 
 
 def increment_daily_post_count():
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         today = _today_str()
         stored_date = conn.execute(
             "SELECT value FROM bot_settings WHERE key = 'posts_today_date'"
@@ -251,7 +256,7 @@ def get_repost_candidate(cooldown_days: int = 14):
     """Return the oldest post that hasn't been (re)posted within
     `cooldown_days`, as a full post dict ready to hand to post_to_channel.
     None if nothing is eligible yet (e.g. queue is empty or too fresh)."""
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         row = conn.execute(
             "SELECT * FROM posted_items "
             "WHERE last_reposted_at IS NULL "
@@ -279,7 +284,7 @@ def get_repost_candidate(cooldown_days: int = 14):
 
 
 def mark_reposted(link: str):
-    with get_conn() as conn:
+    with closing(get_conn()) as conn:
         conn.execute(
             "UPDATE posted_items SET last_reposted_at = CURRENT_TIMESTAMP WHERE link = ?",
             (link,),
