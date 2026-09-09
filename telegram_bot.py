@@ -4,12 +4,12 @@ telegram_bot.py — Conversational + engagement layer for the Telegram bot.
 Runs alongside your existing Flask app and content-posting scheduler.
 Handles:
   - Conversation: FAQ keyword match first (cheap, instant), AI fallback
-    (Claude) for anything else, with short per-user history for context.
+    (Gemini) for anything else, with short per-user history for context.
   - Auto-welcome: greets new members when they join a group.
   - A simple start/stop lifecycle mirroring scheduler.py, so it can be
     controlled from the same dashboard.
 
-Requires: pip install python-telegram-bot==21.* anthropic
+Requires: pip install python-telegram-bot==21.* google-genai
 """
 
 import logging
@@ -123,7 +123,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = db.get_conversation_history(chat_id, user.id, limit=6)
     try:
         reply = await get_ai_reply(text, history)
-    except Exception as e:
+    except Exception:
         logger.exception("AI reply failed")
         reply = "Sorry, I'm having trouble responding right now — try again in a bit."
     await update.message.reply_text(reply)
@@ -242,6 +242,7 @@ async def welcome_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 _app: Application | None = None
 _thread: threading.Thread | None = None
+_lifecycle_lock = threading.Lock()
 
 
 async def _register_commands(app: Application):
@@ -265,17 +266,27 @@ def _run():
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    # stop_signals=None: signal handlers only work on the main thread,
-    # and this runs on a background thread.
-    _app.run_polling(stop_signals=None, close_loop=False)
+    try:
+        # stop_signals=None: signal handlers only work on the main thread,
+        # and this runs on a background thread.
+        _app.run_polling(stop_signals=None, close_loop=False)
+    except Exception:
+        logger.exception("Telegram bot polling loop crashed")
+    finally:
+        # Make sure a crash or stop_running() always leaves _app cleared,
+        # so is_running()/start() see an accurate state afterward instead
+        # of a stale Application pointing at a dead loop.
+        _app = None
 
 
 def start() -> bool:
     global _thread
-    if _thread and _thread.is_alive():
-        return False
-    _thread = threading.Thread(target=_run, daemon=True)
-    _thread.start()
+    with _lifecycle_lock:
+        if _thread and _thread.is_alive():
+            return False
+        _thread = threading.Thread(target=_run, daemon=True, name="telegram-bot")
+        _thread.start()
+    logger.info("Telegram bot thread started")
     return True
 
 
@@ -284,6 +295,9 @@ def is_running() -> bool:
 
 
 def stop():
-    global _app
-    if _app is not None:
-        _app.stop_running()
+    with _lifecycle_lock:
+        if _app is not None:
+            _app.stop_running()
+        if _thread:
+            _thread.join(timeout=10)
+    logger.info("Telegram bot stopped")

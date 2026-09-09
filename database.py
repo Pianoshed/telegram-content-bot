@@ -58,7 +58,7 @@ def init_db():
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
 
-        conn.execute("BEGIN")
+        conn.execute("BEGIN IMMEDIATE")
         try:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS posted_items (
@@ -150,7 +150,7 @@ def mark_posted(link: str, title: str, content: dict | None = None):
     """Store a posted item and increment the total-posted counter."""
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
 
             conn.execute(
                 """
@@ -190,7 +190,7 @@ def mark_posted(link: str, title: str, content: dict | None = None):
 def log_post(title: str, link: str, status: str, message: str = ""):
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 INSERT INTO post_log (title, link, status, message)
@@ -303,7 +303,7 @@ def get_stats():
 def set_setting(key: str, value: str):
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 INSERT INTO bot_settings (key, value)
@@ -331,7 +331,7 @@ def log_conversation(
 ):
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 INSERT INTO conversations
@@ -383,7 +383,7 @@ def get_conversation_history(
 def log_member_join(chat_id: int, user_id: int, name: str):
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 INSERT INTO member_joins (chat_id, user_id, name)
@@ -424,7 +424,7 @@ def _today_str() -> str:
 def increment_daily_post_count():
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
 
             today = _today_str()
 
@@ -515,7 +515,7 @@ def get_repost_candidate(cooldown_days: int = 14):
 def mark_reposted(link: str):
     with closing(get_conn()) as conn:
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 """
                 UPDATE posted_items

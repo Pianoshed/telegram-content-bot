@@ -1,3 +1,7 @@
+import os
+import fcntl
+from pathlib import Path
+
 from flask import Flask, render_template, jsonify, request
 from config import SECRET_KEY
 import database as db
@@ -12,12 +16,52 @@ app.secret_key = SECRET_KEY
 
 db.init_db()
 
-# Auto-start all three background workers on boot, so a Render restart or
-# free-tier sleep/wake cycle doesn't require manually re-clicking Start on
-# the dashboard for the app to actually be functional again.
-scheduler.start()
-telegram_bot.start()
-random_poster.start()
+# ---------------------------------------------------------------------------
+# Guard against starting the background workers more than once.
+#
+# scheduler.start()/telegram_bot.start()/random_poster.start() run at
+# import time. If this module gets imported by more than one OS process --
+# e.g. Render running gunicorn with >1 worker, or Werkzeug's debug reloader
+# spawning a watcher + child locally -- each process starts its own copy of
+# every worker. That means N schedulers hitting the same SQLite file at
+# once (WAL "database is locked"), N Telegram pollers fighting over
+# getUpdates (409 Conflict), and duplicate posts.
+#
+# A simple advisory file lock ensures only the first process to grab it
+# starts the workers. Every other process still serves HTTP requests
+# normally -- it just skips starting the threads.
+# ---------------------------------------------------------------------------
+
+_LOCK_PATH = Path(os.environ.get("WORKER_LOCK_PATH", "/tmp/movie_bot_worker.lock"))
+_lock_file = None
+
+
+def _acquire_worker_lock() -> bool:
+    global _lock_file
+    _lock_file = open(_LOCK_PATH, "w")
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        _lock_file.close()
+        _lock_file = None
+        return False
+    # Keep the fd open for the lifetime of this process -- that's what
+    # holds the lock. It's released automatically when the process exits
+    # or crashes, so a restart never leaves it stuck.
+    _lock_file.write(str(os.getpid()))
+    _lock_file.flush()
+    return True
+
+
+if _acquire_worker_lock():
+    scheduler.start()
+    telegram_bot.start()
+    random_poster.start()
+else:
+    app.logger.info(
+        "Background workers not started in this process "
+        "(another process already holds the worker lock)."
+    )
 
 
 # ─── Pages ───────────────────────────────────────────────────────────────────
@@ -106,4 +150,7 @@ def api_preview():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # use_reloader=False: the reloader re-executes this whole module in a
+    # second process, which would start a second set of workers even
+    # locally. Not needed for a dashboard like this.
+    app.run(debug=True, port=5000, use_reloader=False)
